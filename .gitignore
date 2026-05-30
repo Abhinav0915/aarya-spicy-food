@@ -32,4 +32,4 @@ yarn-error.log*
 # TypeScript cache
 *.tsbuildinfo
 next-env.d.ts
-firebase-debug.log
+firebase-debug.log*.json
