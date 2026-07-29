@@ -154,15 +154,17 @@ export default function Navbar() {
           </a>
         </div>
         {/* Place a order */}
-        <a
-          href={orderLink}
-          className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
-          style={{
-            background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
-          }}
-        >
-          <span>Place Order</span>
-        </a>
+        {activeSegment === "gharSe" && (
+          <a
+            href={orderLink}
+            className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
+            style={{
+              background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+            }}
+          >
+            <span>Place Order</span>
+          </a>
+        )}
 
         {/* Mobile menu button */}
         <button
@@ -222,6 +224,17 @@ export default function Navbar() {
                   </button>
                 ))}
               </div>
+              {activeSegment === "gharSe" && (
+                <a
+                  href={orderLink}
+                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
+                  style={{
+                    background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+                  }}
+                >
+                  <span>Place Order</span>
+                </a>
+              )}
               <a
                 href="tel:9286702253"
                 className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"

@@ -1,13 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Plus, Minus, ShoppingBag, Sparkles, ArrowRight } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import WhatsAppFAB from "@/components/ui/WhatsAppFAB";
-import { SegmentProvider } from "@/lib/segment-context";
+import { SegmentProvider, useSegment } from "@/lib/segment-context";
 
 type Category = "All" | "Lunch" | "Dinner" | "Add-ons";
 
@@ -87,8 +88,16 @@ function formatPrice(value: number) {
 }
 
 function PlaceOrderPageContent() {
+  const router = useRouter();
+  const { activeSegment } = useSegment();
   const [activeCategory, setActiveCategory] = useState<Category>("All");
   const [basket, setBasket] = useState<BasketItem[]>([]);
+
+  useEffect(() => {
+    if (activeSegment !== "gharSe") {
+      router.replace("/");
+    }
+  }, [activeSegment, router]);
 
   const filteredItems = useMemo(() => {
     if (activeCategory === "All") return menuItems;
