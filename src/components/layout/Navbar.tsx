@@ -13,6 +13,8 @@ const navLinks = [
   { label: "Contact", href: "#contact" },
 ];
 
+const orderLink = "/place-order";
+
 export default function Navbar() {
   const { activeSegment, setActiveSegment, config } = useSegment();
   const [scrolled, setScrolled] = useState(false);
@@ -31,9 +33,7 @@ export default function Navbar() {
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
       className={`fixed top-0 left-0 right-0 z-50 transition-all duration-500 ${
-        scrolled
-          ? "glass border-b border-white/10 py-3"
-          : "bg-transparent py-5"
+        scrolled ? "glass border-b border-white/10 py-3" : "bg-transparent py-5"
       }`}
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
@@ -41,7 +41,9 @@ export default function Navbar() {
         <a href="#home" className="flex items-center gap-3 group">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-bold transition-transform group-hover:scale-110"
-            style={{ background: `linear-gradient(135deg, var(--primary), var(--accent))` }}
+            style={{
+              background: `linear-gradient(135deg, var(--primary), var(--accent))`,
+            }}
           >
             🌶️
           </div>
@@ -114,14 +116,19 @@ export default function Navbar() {
                       }`}
                       style={
                         activeSegment === seg.id
-                          ? { background: `${seg.colors.primary}20`, color: seg.colors.primary }
+                          ? {
+                              background: `${seg.colors.primary}20`,
+                              color: seg.colors.primary,
+                            }
                           : {}
                       }
                     >
                       <span className="text-lg">{seg.emoji}</span>
                       <div className="text-left">
                         <div className="font-semibold">{seg.label}</div>
-                        <div className="text-xs opacity-60">{seg.description}</div>
+                        <div className="text-xs opacity-60">
+                          {seg.description}
+                        </div>
                       </div>
                       {seg.status === "coming-soon" && (
                         <span className="ml-auto text-[10px] bg-white/10 px-1.5 py-0.5 rounded-full">
@@ -138,12 +145,24 @@ export default function Navbar() {
           <a
             href="tel:9286702253"
             className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
-            style={{ background: `linear-gradient(135deg, var(--primary), var(--primary-dark))` }}
+            style={{
+              background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+            }}
           >
             <Phone size={14} />
             Call Now
           </a>
         </div>
+        {/* Place a order */}
+        <a
+          href={orderLink}
+          className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
+          style={{
+            background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+          }}
+        >
+          <span>Place Order</span>
+        </a>
 
         {/* Mobile menu button */}
         <button
@@ -191,7 +210,10 @@ export default function Navbar() {
                     }`}
                     style={
                       activeSegment === seg.id
-                        ? { background: `${seg.colors.primary}20`, color: seg.colors.primary }
+                        ? {
+                            background: `${seg.colors.primary}20`,
+                            color: seg.colors.primary,
+                          }
                         : { background: "rgba(255,255,255,0.04)" }
                     }
                   >
@@ -203,7 +225,9 @@ export default function Navbar() {
               <a
                 href="tel:9286702253"
                 className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
-                style={{ background: `linear-gradient(135deg, var(--primary), var(--primary-dark))` }}
+                style={{
+                  background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+                }}
               >
                 <Phone size={14} />
                 92867-02253

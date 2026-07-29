@@ -23,7 +23,7 @@ const segmentHeroContent = {
     headline: "Taste the Comfort of\nHome, Delivered\nFresh Everyday",
     sub: "Freshly prepared meals made with love, delivered to students and working professionals.",
     cta1: "View Plans",
-    cta2: "Subscribe Now",
+    cta2: "Order Now", 
   },
   zomato: {
     badge: "🛵 Coming Soon on Zomato",
