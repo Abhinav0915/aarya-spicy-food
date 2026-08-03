@@ -68,7 +68,14 @@ interface SegmentContextType {
   isTransitioning: boolean;
 }
 
-const SegmentContext = createContext<SegmentContextType | null>(null);
+const defaultSegmentContext: SegmentContextType = {
+  activeSegment: "gharSe",
+  setActiveSegment: () => {},
+  config: SEGMENTS[0],
+  isTransitioning: false,
+};
+
+const SegmentContext = createContext<SegmentContextType>(defaultSegmentContext);
 
 export function SegmentProvider({ children }: { children: React.ReactNode }) {
   const [activeSegment, setActiveSegmentState] = useState<Segment>(() => {
@@ -128,7 +135,5 @@ export function SegmentProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useSegment() {
-  const ctx = useContext(SegmentContext);
-  if (!ctx) throw new Error("useSegment must be used within SegmentProvider");
-  return ctx;
+  return useContext(SegmentContext);
 }

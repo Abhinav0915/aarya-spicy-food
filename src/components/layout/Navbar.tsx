@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Phone, ChevronDown } from "lucide-react";
+import { Menu, X, Phone, ChevronDown, User, Mail, AtSign } from "lucide-react";
 import { useSegment, SEGMENTS } from "@/lib/segment-context";
 
 const navLinks = [
@@ -15,17 +16,54 @@ const navLinks = [
 
 const orderLink = "/place-order";
 
+interface NavbarUser {
+  firstName: string;
+  lastName: string;
+  email: string;
+  username: string;
+  token: string;
+}
+
 export default function Navbar() {
+  const router = useRouter();
   const { activeSegment, setActiveSegment, config } = useSegment();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [segmentOpen, setSegmentOpen] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [authUser, setAuthUser] = useState<NavbarUser | null>(null);
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const storedUser = window.localStorage.getItem("aaryaAuthUser");
+    const storedToken = window.localStorage.getItem("aaryaAuthToken");
+
+    if (storedUser && storedToken) {
+      setAuthUser(JSON.parse(storedUser) as NavbarUser);
+    }
+  }, []);
+
+  const handleLogout = () => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.removeItem("aaryaAuthUser");
+    window.localStorage.removeItem("aaryaAuthToken");
+    setAuthUser(null);
+    setProfileOpen(false);
+    router.push("/");
+  };
+
+  const handleViewProfile = () => {
+    setProfileOpen(false);
+    router.push("/profile");
+  };
 
   return (
     <motion.nav
@@ -154,17 +192,80 @@ export default function Navbar() {
           </a>
         </div>
         {/* Place a order */}
-        {activeSegment === "gharSe" && (
-          <a
-            href={orderLink}
-            className="hidden lg:flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
-            style={{
-              background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
-            }}
-          >
-            <span>Place Order</span>
-          </a>
-        )}
+        <div className="hidden lg:flex items-center gap-3">
+          {activeSegment === "gharSe" && (
+            <a
+              href={orderLink}
+              className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
+              style={{
+                background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+              }}
+            >
+              <span>Place Order</span>
+            </a>
+          )}
+
+          {authUser ? (
+            <div className="relative">
+              <button
+                onClick={() => setProfileOpen((open) => !open)}
+                className="flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-2.5 py-2 text-sm font-semibold text-white transition hover:bg-white/15"
+              >
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--primary)]/20 text-[var(--primary)]">
+                  <User size={16} />
+                </div>
+                <span>{authUser.username || authUser.firstName}</span>
+                <ChevronDown
+                  size={14}
+                  className={`transition ${profileOpen ? "rotate-180" : ""}`}
+                />
+              </button>
+
+              <AnimatePresence>
+                {profileOpen && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: 8 }}
+                    className="absolute right-0 mt-2 w-56 rounded-2xl border border-white/10 bg-[rgba(15,23,42,0.95)] p-2 shadow-xl"
+                  >
+                    <div className="rounded-xl border border-white/10 bg-white/5 p-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[var(--primary)]/20 text-[var(--primary)]">
+                        <User size={18} />
+                      </div>
+                      <p className="mt-3 text-sm font-semibold text-white">
+                        {authUser.firstName} {authUser.lastName}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2 text-xs text-white/60">
+                        <Mail size={12} />
+                        <span>{authUser.email}</span>
+                      </div>
+                      <div className="mt-1 flex items-center gap-2 text-xs text-white/40">
+                        <AtSign size={12} />
+                        <span>@{authUser.username}</span>
+                      </div>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleViewProfile}
+                      className="mt-2 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-red-300 transition hover:bg-red-500/10"
+                    >
+                      Logout
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          ) : null}
+        </div>
 
         {/* Mobile menu button */}
         <button
