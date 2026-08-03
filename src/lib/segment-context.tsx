@@ -68,10 +68,31 @@ interface SegmentContextType {
   isTransitioning: boolean;
 }
 
-const SegmentContext = createContext<SegmentContextType | null>(null);
+const defaultSegmentContext: SegmentContextType = {
+  activeSegment: "gharSe",
+  setActiveSegment: () => {},
+  config: SEGMENTS[0],
+  isTransitioning: false,
+};
+
+const SegmentContext = createContext<SegmentContextType>(defaultSegmentContext);
 
 export function SegmentProvider({ children }: { children: React.ReactNode }) {
-  const [activeSegment, setActiveSegmentState] = useState<Segment>("gharSe");
+  const [activeSegment, setActiveSegmentState] = useState<Segment>(() => {
+    if (typeof window === "undefined") return "gharSe";
+
+    const storedSegment = window.localStorage.getItem("aaryas-active-segment");
+    if (
+      storedSegment === "gharSe" ||
+      storedSegment === "zomato" ||
+      storedSegment === "swiggy" ||
+      storedSegment === "catering"
+    ) {
+      return storedSegment;
+    }
+
+    return "gharSe";
+  });
   const [isTransitioning, setIsTransitioning] = useState(false);
 
   const setActiveSegment = (segment: Segment) => {
@@ -86,6 +107,12 @@ export function SegmentProvider({ children }: { children: React.ReactNode }) {
   const config = SEGMENTS.find((s) => s.id === activeSegment)!;
 
   useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("aaryas-active-segment", activeSegment);
+    }
+  }, [activeSegment]);
+
+  useEffect(() => {
     const dataAttrMap: Record<Segment, string> = {
       gharSe: "gharSe",
       zomato: "zomato",
@@ -94,7 +121,7 @@ export function SegmentProvider({ children }: { children: React.ReactNode }) {
     };
     document.documentElement.setAttribute(
       "data-segment",
-      dataAttrMap[activeSegment]
+      dataAttrMap[activeSegment],
     );
   }, [activeSegment]);
 
@@ -108,7 +135,5 @@ export function SegmentProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useSegment() {
-  const ctx = useContext(SegmentContext);
-  if (!ctx) throw new Error("useSegment must be used within SegmentProvider");
-  return ctx;
+  return useContext(SegmentContext);
 }

@@ -1,13 +1,25 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Plus, Minus, ShoppingBag, Sparkles, ArrowRight } from "lucide-react";
+import {
+  Plus,
+  Minus,
+  ShoppingBag,
+  Sparkles,
+  ArrowRight,
+  Lock,
+  Mail,
+  UserRound,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import WhatsAppFAB from "@/components/ui/WhatsAppFAB";
-import { SegmentProvider } from "@/lib/segment-context";
+import { SegmentProvider, useSegment } from "@/lib/segment-context";
 
 type Category = "All" | "Lunch" | "Dinner" | "Add-ons";
 
@@ -86,9 +98,208 @@ function formatPrice(value: number) {
   return `₹${value.toLocaleString("en-IN")}`;
 }
 
+interface AuthUser {
+  firstName: string;
+  lastName: string;
+  email: string;
+  username: string;
+  token: string;
+}
+
+const API_BASE_URL =
+  process.env.NEXT_PUBLIC_DJANGO_API_URL || "http://127.0.0.1:8000";
+
 function PlaceOrderPageContent() {
+  const router = useRouter();
+  const { activeSegment } = useSegment();
   const [activeCategory, setActiveCategory] = useState<Category>("All");
   const [basket, setBasket] = useState<BasketItem[]>([]);
+  const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showSigninPassword, setShowSigninPassword] = useState(false);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [authError, setAuthError] = useState("");
+
+  useEffect(() => {
+    if (activeSegment !== "gharSe") {
+      router.replace("/");
+    }
+  }, [activeSegment, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    try {
+      const storedUser = window.localStorage.getItem("aaryaAuthUser");
+      const storedToken = window.localStorage.getItem("aaryaAuthToken");
+
+      if (storedUser && storedToken) {
+        setAuthUser(JSON.parse(storedUser) as AuthUser);
+      }
+    } catch {
+      window.localStorage.removeItem("aaryaAuthUser");
+      window.localStorage.removeItem("aaryaAuthToken");
+    } finally {
+      setAuthLoading(false);
+    }
+  }, []);
+
+  const persistAuthSession = (user: AuthUser) => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.setItem("aaryaAuthUser", JSON.stringify(user));
+    window.localStorage.setItem("aaryaAuthToken", user.token);
+    setAuthUser(user);
+  };
+
+  const clearAuthSession = () => {
+    if (typeof window === "undefined") return;
+
+    window.localStorage.removeItem("aaryaAuthUser");
+    window.localStorage.removeItem("aaryaAuthToken");
+    setAuthUser(null);
+    setEmail("");
+    setPassword("");
+    setConfirmPassword("");
+    setLoginIdentifier("");
+    setFirstName("");
+    setLastName("");
+    setUsername("");
+    setShowSigninPassword(false);
+    setShowSignupPassword(false);
+    setShowConfirmPassword(false);
+  };
+
+  const getAuthHeaders = () => {
+    const token =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("aaryaAuthToken")
+        : "";
+
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+  };
+
+  const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthError("");
+    setAuthLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/login/`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          username: loginIdentifier.trim(),
+          email: loginIdentifier.trim(),
+          password,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(data?.error || data?.detail || data?.message || "Unable to sign in.");
+      }
+
+      const token = data.access || data.token || data.access_token || "";
+      const userData = data.user || data.profile || {};
+
+      const user: AuthUser = {
+        firstName: userData.first_name || userData.firstName || "",
+        lastName: userData.last_name || userData.lastName || "",
+        email: userData.email || email.trim(),
+        username: userData.username || loginIdentifier.trim(),
+        token,
+      };
+
+      if (!user.token) {
+        throw new Error("The server did not return a JWT token.");
+      }
+
+      persistAuthSession(user);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error ? error.message : "Unable to sign in.",
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAuthError("");
+
+    if (password !== confirmPassword) {
+      setAuthError("Passwords do not match.");
+      return;
+    }
+
+    setAuthLoading(true);
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/signup/`, {
+        method: "POST",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({
+          username: username.trim() || email.split("@")[0],
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email: email.trim(),
+          password,
+          password_confirm: confirmPassword,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            data?.errors?.[0] ||
+            "Unable to create your account.",
+        );
+      }
+
+      const token = data.access || data.token || data.access_token || "";
+      const userData = data.user || data.profile || {};
+
+      const user: AuthUser = {
+        firstName: userData.first_name || firstName.trim(),
+        lastName: userData.last_name || lastName.trim(),
+        email: userData.email || email.trim(),
+        username: userData.username || username.trim() || email.split("@")[0],
+        token,
+      };
+
+      if (!user.token) {
+        throw new Error("The server did not return a JWT token.");
+      }
+
+      persistAuthSession(user);
+    } catch (error) {
+      setAuthError(
+        error instanceof Error
+          ? error.message
+          : "Unable to create your account.",
+      );
+    } finally {
+      setAuthLoading(false);
+    }
+  };
 
   const filteredItems = useMemo(() => {
     if (activeCategory === "All") return menuItems;
@@ -138,6 +349,284 @@ function PlaceOrderPageContent() {
     }`,
   )}`;
 
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)] flex items-center justify-center px-4">
+        <div className="rounded-[32px] border border-white/10 bg-[rgba(255,255,255,0.04)] px-8 py-10 text-center shadow-2xl">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[rgba(249,115,22,0.15)] text-[var(--primary)]">
+            <Lock size={24} />
+          </div>
+          <h1 className="mt-4 text-2xl font-semibold text-white">
+            Checking your access...
+          </h1>
+          <p className="mt-2 text-sm text-white/60">
+            Please wait while we verify your login.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!authUser) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)]">
+        <Navbar />
+
+        <main className="pt-28 px-4 sm:px-6 pb-20">
+          <div className="mx-auto flex max-w-5xl items-center justify-center">
+            <motion.section
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5 }}
+              className="w-full max-w-xl rounded-[32px] border border-white/10 bg-[rgba(255,255,255,0.04)] p-8 shadow-2xl"
+            >
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)]/25 bg-[rgba(249,115,22,0.08)] px-3 py-1 text-sm font-medium text-[var(--primary)]">
+                <Lock size={14} />
+                Secure access required
+              </div>
+              <h1 className="mt-4 text-3xl font-semibold text-white">
+                {authMode === "signin"
+                  ? "Sign in to place your order"
+                  : "Create your account"}
+              </h1>
+              <p className="mt-3 text-sm leading-7 text-white/60">
+                {authMode === "signin"
+                  ? "Please log in with your username and password before you can view the menu and build your basket."
+                  : "Create an account to start ordering from Aaryas Spicy Kitchen."}
+              </p>
+
+              <div className="mt-6 flex rounded-full border border-white/10 bg-[rgba(255,255,255,0.04)] p-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("signin");
+                    setAuthError("");
+                  }}
+                  className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    authMode === "signin"
+                      ? "bg-[var(--primary)] text-white"
+                      : "text-white/60"
+                  }`}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthMode("signup");
+                    setAuthError("");
+                  }}
+                  className={`flex-1 rounded-full px-4 py-2 text-sm font-semibold transition ${
+                    authMode === "signup"
+                      ? "bg-[var(--primary)] text-white"
+                      : "text-white/60"
+                  }`}
+                >
+                  Sign up
+                </button>
+              </div>
+
+              {authMode === "signin" ? (
+                <form onSubmit={handleLogin} className="mt-8 space-y-4">
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Username or email</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <UserRound size={16} className="text-white/50" />
+                      <input
+                        type="text"
+                        value={loginIdentifier}
+                        onChange={(event) => setLoginIdentifier(event.target.value)}
+                        placeholder="Enter your username or email"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Password</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <Lock size={16} className="text-white/50" />
+                      <input
+                        type={showSigninPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Enter your password"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSigninPassword((value) => !value)}
+                        className="text-white/60 transition hover:text-white"
+                        aria-label={showSigninPassword ? "Hide password" : "Show password"}
+                      >
+                        {showSigninPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </label>
+
+                  {authError && (
+                    <p className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {authError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                    }}
+                  >
+                    {authLoading ? "Signing in..." : "Sign in"}
+                    <ArrowRight size={16} />
+                  </button>
+                </form>
+              ) : (
+                <form onSubmit={handleSignup} className="mt-8 space-y-4">
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Username</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <UserRound size={16} className="text-white/50" />
+                      <input
+                        type="text"
+                        value={username}
+                        onChange={(event) => setUsername(event.target.value)}
+                        placeholder="Choose a username"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                    </div>
+                  </label>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label className="block text-sm font-medium text-white/70">
+                      <span className="mb-2 block">First name</span>
+                      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                        <UserRound size={16} className="text-white/50" />
+                        <input
+                          type="text"
+                          value={firstName}
+                          onChange={(event) => setFirstName(event.target.value)}
+                          placeholder="First name"
+                          required
+                          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                        />
+                      </div>
+                    </label>
+
+                    <label className="block text-sm font-medium text-white/70">
+                      <span className="mb-2 block">Last name</span>
+                      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                        <UserRound size={16} className="text-white/50" />
+                        <input
+                          type="text"
+                          value={lastName}
+                          onChange={(event) => setLastName(event.target.value)}
+                          placeholder="Last name"
+                          required
+                          className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                        />
+                      </div>
+                    </label>
+                  </div>
+
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Email address</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <Mail size={16} className="text-white/50" />
+                      <input
+                        type="email"
+                        value={email}
+                        onChange={(event) => setEmail(event.target.value)}
+                        placeholder="you@example.com"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                    </div>
+                  </label>
+
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Password</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <Lock size={16} className="text-white/50" />
+                      <input
+                        type={showSignupPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(event) => setPassword(event.target.value)}
+                        placeholder="Create a password"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowSignupPassword((value) => !value)}
+                        className="text-white/60 transition hover:text-white"
+                        aria-label={showSignupPassword ? "Hide password" : "Show password"}
+                      >
+                        {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </label>
+
+                  <label className="block text-sm font-medium text-white/70">
+                    <span className="mb-2 block">Confirm password</span>
+                    <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3">
+                      <Lock size={16} className="text-white/50" />
+                      <input
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(event) =>
+                          setConfirmPassword(event.target.value)
+                        }
+                        placeholder="Confirm your password"
+                        required
+                        className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword((value) => !value)}
+                        className="text-white/60 transition hover:text-white"
+                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      >
+                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                      </button>
+                    </div>
+                  </label>
+
+                  {authError && (
+                    <p className="rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                      {authError}
+                    </p>
+                  )}
+
+                  <button
+                    type="submit"
+                    disabled={authLoading}
+                    className="flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-70"
+                    style={{
+                      background:
+                        "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                    }}
+                  >
+                    {authLoading ? "Creating account..." : "Create account"}
+                    <ArrowRight size={16} />
+                  </button>
+                </form>
+              )}
+            </motion.section>
+          </div>
+        </main>
+
+        <Footer />
+        <WhatsAppFAB />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[var(--bg-main)] text-[var(--text-primary)]">
       <Navbar />
@@ -169,13 +658,22 @@ function PlaceOrderPageContent() {
                 </p>
               </div>
 
-              <Link
-                href="/"
-                className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10"
-              >
-                Back to home
-                <ArrowRight size={16} />
-              </Link>
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={clearAuthSession}
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+                >
+                  Log out
+                </button>
+                <Link
+                  href="/"
+                  className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+                >
+                  Back to home
+                  <ArrowRight size={16} />
+                </Link>
+              </div>
             </div>
           </motion.section>
 
