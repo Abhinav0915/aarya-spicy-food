@@ -128,6 +128,9 @@ function PlaceOrderPageContent() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
+    null,
+  );
 
   useEffect(() => {
     if (activeSegment !== "gharSe") {
@@ -210,7 +213,9 @@ function PlaceOrderPageContent() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data?.error || data?.detail || data?.message || "Unable to sign in.");
+        throw new Error(
+          data?.error || data?.detail || data?.message || "Unable to sign in.",
+        );
       }
 
       const token = data.access || data.token || data.access_token || "";
@@ -238,9 +243,38 @@ function PlaceOrderPageContent() {
     }
   };
 
+  const validateUsername = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    if (trimmed.length < 3) {
+      setUsernameAvailable(false);
+      setAuthError("Username must be at least 3 characters long.");
+      return;
+    }
+
+    setUsernameAvailable(true);
+    setAuthError("");
+  };
+
   const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError("");
+
+    const normalizedUsername = username.trim();
+
+    if (!normalizedUsername) {
+      setAuthError("Username is required.");
+      return;
+    }
+
+    if (normalizedUsername.length < 3) {
+      setAuthError("Username must be at least 3 characters long.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setAuthError("Passwords do not match.");
@@ -254,7 +288,7 @@ function PlaceOrderPageContent() {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          username: username.trim() || email.split("@")[0],
+          username: normalizedUsername,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           email: email.trim(),
@@ -267,7 +301,8 @@ function PlaceOrderPageContent() {
 
       if (!response.ok) {
         throw new Error(
-          data?.detail ||
+          data?.error ||
+            data?.detail ||
             data?.message ||
             data?.errors?.[0] ||
             "Unable to create your account.",
@@ -435,7 +470,9 @@ function PlaceOrderPageContent() {
                       <input
                         type="text"
                         value={loginIdentifier}
-                        onChange={(event) => setLoginIdentifier(event.target.value)}
+                        onChange={(event) =>
+                          setLoginIdentifier(event.target.value)
+                        }
                         placeholder="Enter your username or email"
                         required
                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
@@ -459,9 +496,15 @@ function PlaceOrderPageContent() {
                         type="button"
                         onClick={() => setShowSigninPassword((value) => !value)}
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showSigninPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showSigninPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showSigninPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showSigninPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -494,7 +537,10 @@ function PlaceOrderPageContent() {
                       <input
                         type="text"
                         value={username}
-                        onChange={(event) => setUsername(event.target.value)}
+                        onChange={(event) => {
+                          setUsername(event.target.value);
+                          validateUsername(event.target.value);
+                        }}
                         placeholder="Choose a username"
                         required
                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
@@ -565,9 +611,15 @@ function PlaceOrderPageContent() {
                         type="button"
                         onClick={() => setShowSignupPassword((value) => !value)}
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showSignupPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showSignupPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showSignupPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -588,11 +640,21 @@ function PlaceOrderPageContent() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword((value) => !value)}
+                        onClick={() =>
+                          setShowConfirmPassword((value) => !value)
+                        }
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showConfirmPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
                       >
-                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showConfirmPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
