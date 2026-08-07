@@ -1,17 +1,19 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { Menu, X, Phone, ChevronDown, User, Mail, AtSign } from "lucide-react";
+import { Menu, X, Phone, ChevronDown, User, Mail, AtSign, Moon, Sun } from "lucide-react";
 import { useSegment, SEGMENTS } from "@/lib/segment-context";
+import { useTheme } from "@/lib/theme-context";
+import LatestOrderBanner from "@/components/ui/LatestOrderBanner";
 
 const navLinks = [
-  { label: "Home", href: "#home" },
-  { label: "Plans", href: "#plans" },
-  { label: "Menu", href: "#menu" },
-  { label: "About", href: "#about" },
-  { label: "Contact", href: "#contact" },
+  { label: "Home", href: "/#home" },
+  { label: "Plans", href: "/#plans" },
+  { label: "Menu", href: "/#menu" },
+  { label: "About", href: "/#about" },
+  { label: "Contact", href: "/#contact" },
 ];
 
 const orderLink = "/place-order";
@@ -22,16 +24,24 @@ interface NavbarUser {
   email: string;
   username: string;
   token: string;
+  isStaff?: boolean;
+  isSuperuser?: boolean;
 }
 
 export default function Navbar() {
   const router = useRouter();
+  const pathname = usePathname();
   const { activeSegment, setActiveSegment, config } = useSegment();
+  const { theme, toggleTheme } = useTheme();
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [segmentOpen, setSegmentOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [authUser, setAuthUser] = useState<NavbarUser | null>(null);
+  const isAdmin = Boolean(authUser?.isStaff || authUser?.isSuperuser);
+  const isAdminArea = pathname?.startsWith("/admin") ?? false;
+  const isAdminShell = isAdmin || isAdminArea;
+  const logoHref = isAdminShell ? "/admin/orders" : "/#home";
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 40);
@@ -42,12 +52,32 @@ export default function Navbar() {
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const storedUser = window.localStorage.getItem("aaryaAuthUser");
-    const storedToken = window.localStorage.getItem("aaryaAuthToken");
+    const loadAuthUser = () => {
+      const storedUser = window.localStorage.getItem("aaryaAuthUser");
+      const storedToken = window.localStorage.getItem("aaryaAuthToken");
 
-    if (storedUser && storedToken) {
-      setAuthUser(JSON.parse(storedUser) as NavbarUser);
-    }
+      if (!storedUser || !storedToken) {
+        setAuthUser(null);
+        return;
+      }
+
+      try {
+        setAuthUser(JSON.parse(storedUser) as NavbarUser);
+      } catch {
+        window.localStorage.removeItem("aaryaAuthUser");
+        window.localStorage.removeItem("aaryaAuthToken");
+        setAuthUser(null);
+      }
+    };
+
+    loadAuthUser();
+    window.addEventListener("storage", loadAuthUser);
+    window.addEventListener("aaryaAuthChanged", loadAuthUser);
+
+    return () => {
+      window.removeEventListener("storage", loadAuthUser);
+      window.removeEventListener("aaryaAuthChanged", loadAuthUser);
+    };
   }, []);
 
   const handleLogout = () => {
@@ -55,6 +85,7 @@ export default function Navbar() {
 
     window.localStorage.removeItem("aaryaAuthUser");
     window.localStorage.removeItem("aaryaAuthToken");
+    window.dispatchEvent(new Event("aaryaAuthChanged"));
     setAuthUser(null);
     setProfileOpen(false);
     router.push("/");
@@ -65,7 +96,25 @@ export default function Navbar() {
     router.push("/profile");
   };
 
+  const handleViewAdminOrders = () => {
+    setProfileOpen(false);
+    router.push("/admin/orders");
+  };
+
+  const themeToggle = (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className="flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-white/5 text-white/75 transition hover:bg-white/10 hover:text-white"
+      aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+      title={theme === "dark" ? "Light mode" : "Dark mode"}
+    >
+      {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+    </button>
+  );
+
   return (
+    <>
     <motion.nav
       initial={{ y: -100, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
@@ -76,7 +125,7 @@ export default function Navbar() {
     >
       <div className="max-w-7xl mx-auto px-4 sm:px-6 flex items-center justify-between">
         {/* Logo */}
-        <a href="#home" className="flex items-center gap-3 group">
+        <a href={logoHref} className="flex items-center gap-3 group">
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center text-xl font-bold transition-transform group-hover:scale-110"
             style={{
@@ -99,6 +148,7 @@ export default function Navbar() {
         </a>
 
         {/* Desktop Nav */}
+        {!isAdminShell && (
         <div className="hidden lg:flex items-center gap-8">
           {navLinks.map((link) => (
             <a
@@ -114,8 +164,10 @@ export default function Navbar() {
             </a>
           ))}
         </div>
+        )}
 
         {/* Segment Switcher */}
+        {!isAdminShell && (
         <div className="hidden lg:flex items-center gap-4">
           <div className="relative">
             <button
@@ -191,9 +243,12 @@ export default function Navbar() {
             Call Now
           </a>
         </div>
+        )}
         {/* Place a order */}
         <div className="hidden lg:flex items-center gap-3">
-          {activeSegment === "gharSe" && (
+          {themeToggle}
+
+          {!isAdminShell && activeSegment === "gharSe" && (
             <a
               href={orderLink}
               className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold text-white transition-all hover:scale-105"
@@ -249,10 +304,21 @@ export default function Navbar() {
                     <button
                       type="button"
                       onClick={handleViewProfile}
-                      className="mt-2 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10"
+                      className={`mt-2 w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10 ${
+                        isAdminShell ? "hidden" : "flex"
+                      }`}
                     >
                       View Profile
                     </button>
+                    {isAdmin && (
+                      <button
+                        type="button"
+                        onClick={handleViewAdminOrders}
+                        className="mt-1 flex w-full items-center rounded-xl px-3 py-2 text-left text-sm text-white/80 transition hover:bg-white/10"
+                      >
+                        Admin Orders
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={handleLogout}
@@ -267,13 +333,19 @@ export default function Navbar() {
           ) : null}
         </div>
 
-        {/* Mobile menu button */}
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          className="lg:hidden text-white/70 hover:text-white transition-colors"
-        >
-          {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-        </button>
+        <div className="flex items-center gap-2 lg:hidden">
+          {themeToggle}
+
+          {/* Mobile menu button */}
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className={`text-white/70 hover:text-white transition-colors ${
+              isAdminShell && !authUser ? "hidden" : ""
+            }`}
+          >
+            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+          </button>
+        </div>
       </div>
 
       {/* Mobile Menu */}
@@ -286,70 +358,100 @@ export default function Navbar() {
             className="lg:hidden glass border-t border-white/10"
           >
             <div className="max-w-7xl mx-auto px-4 py-6 flex flex-col gap-4">
-              {navLinks.map((link) => (
-                <a
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setMobileOpen(false)}
-                  className="text-base font-medium text-white/70 hover:text-white transition-colors"
-                >
-                  {link.label}
-                </a>
-              ))}
-              <div className="h-px bg-white/10 my-2" />
-              <div className="text-xs text-white/40 uppercase tracking-widest mb-2">
-                Switch Segment
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                {SEGMENTS.map((seg) => (
-                  <button
-                    key={seg.id}
-                    onClick={() => {
-                      setActiveSegment(seg.id);
-                      setMobileOpen(false);
+              {isAdminShell ? (
+                <>
+                  {authUser && (
+                    <>
+                      <a
+                        href="/admin/orders"
+                        onClick={() => setMobileOpen(false)}
+                        className="flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white"
+                        style={{
+                          background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+                        }}
+                      >
+                        <span>Admin Orders</span>
+                      </a>
+                      <button
+                        type="button"
+                        onClick={handleLogout}
+                        className="flex items-center justify-center gap-2 rounded-full border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm font-semibold text-red-200"
+                      >
+                        Logout
+                      </button>
+                    </>
+                  )}
+                </>
+              ) : (
+                <>
+                  {navLinks.map((link) => (
+                    <a
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMobileOpen(false)}
+                      className="text-base font-medium text-white/70 hover:text-white transition-colors"
+                    >
+                      {link.label}
+                    </a>
+                  ))}
+                  <div className="h-px bg-white/10 my-2" />
+                  <div className="text-xs text-white/40 uppercase tracking-widest mb-2">
+                    Switch Segment
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {SEGMENTS.map((seg) => (
+                      <button
+                        key={seg.id}
+                        onClick={() => {
+                          setActiveSegment(seg.id);
+                          setMobileOpen(false);
+                        }}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                          activeSegment === seg.id ? "text-white" : "text-white/50"
+                        }`}
+                        style={
+                          activeSegment === seg.id
+                            ? {
+                                background: `${seg.colors.primary}20`,
+                                color: seg.colors.primary,
+                              }
+                            : { background: "rgba(255,255,255,0.04)" }
+                        }
+                      >
+                        <span>{seg.emoji}</span>
+                        <span>{seg.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {activeSegment === "gharSe" && (
+                    <a
+                      href={orderLink}
+                      className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
+                      style={{
+                        background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
+                      }}
+                    >
+                      <span>Place Order</span>
+                    </a>
+                  )}
+                  <a
+                    href="tel:9286702253"
+                    className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
+                    style={{
+                      background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
                     }}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                      activeSegment === seg.id ? "text-white" : "text-white/50"
-                    }`}
-                    style={
-                      activeSegment === seg.id
-                        ? {
-                            background: `${seg.colors.primary}20`,
-                            color: seg.colors.primary,
-                          }
-                        : { background: "rgba(255,255,255,0.04)" }
-                    }
                   >
-                    <span>{seg.emoji}</span>
-                    <span>{seg.label}</span>
-                  </button>
-                ))}
-              </div>
-              {activeSegment === "gharSe" && (
-                <a
-                  href={orderLink}
-                  className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
-                  style={{
-                    background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
-                  }}
-                >
-                  <span>Place Order</span>
-                </a>
+                    <Phone size={14} />
+                    92867-02253
+                  </a>
+                </>
               )}
-              <a
-                href="tel:9286702253"
-                className="flex items-center justify-center gap-2 px-4 py-3 rounded-full text-sm font-semibold text-white mt-2"
-                style={{
-                  background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
-                }}
-              >
-                <Phone size={14} />
-                92867-02253
-              </a>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
     </motion.nav>
+    {!isAdminShell && <LatestOrderBanner />}
+    </>
   );
 }

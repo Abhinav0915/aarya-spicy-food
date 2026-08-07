@@ -59,6 +59,7 @@ export default function HeroSection() {
   const opacity = useTransform(scrollYProgress, [0, 0.8], [1, 0]);
 
   const content = segmentHeroContent[activeSegment];
+  const secondaryCtaHref = activeSegment === "gharSe" ? "/place-order" : "/#contact";
 
   return (
     <section
@@ -181,7 +182,7 @@ export default function HeroSection() {
           className="flex flex-col sm:flex-row items-center justify-center gap-4"
         >
           <a
-            href="#plans"
+            href="/#plans"
             className="group flex items-center gap-3 px-8 py-4 rounded-full text-base font-semibold text-white transition-all hover:scale-105 hover:shadow-2xl"
             style={{
               background: `linear-gradient(135deg, var(--primary), var(--primary-dark))`,
@@ -192,7 +193,7 @@ export default function HeroSection() {
             <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
           </a>
           <a
-            href="#contact"
+            href={secondaryCtaHref}
             className="flex items-center gap-2 px-8 py-4 rounded-full text-base font-semibold glass border border-white/20 text-white hover:border-white/40 transition-all hover:scale-105"
           >
             {content.cta2}

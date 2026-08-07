@@ -35,11 +35,11 @@ export default function Footer() {
             <div className="text-xs uppercase tracking-widest text-white/30 mb-4">Quick Links</div>
             <ul className="space-y-2.5">
               {[
-                { label: "Home", href: "#home" },
-                { label: "Meal Plans", href: "#plans" },
-                { label: "Weekly Menu", href: "#menu" },
-                { label: "About", href: "#about" },
-                { label: "Contact", href: "#contact" },
+                { label: "Home", href: "/#home" },
+                { label: "Meal Plans", href: "/#plans" },
+                { label: "Weekly Menu", href: "/#menu" },
+                { label: "About", href: "/#about" },
+                { label: "Contact", href: "/#contact" },
               ].map((l) => (
                 <li key={l.href}>
                   <a href={l.href} className="text-sm text-white/40 hover:text-white transition-colors">

@@ -3,55 +3,25 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { useInView } from "framer-motion";
 import { useRef, useState } from "react";
-
-type MealType = "lunch" | "dinner";
-type PlanType = "economic" | "premium";
-
-const days = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-
-interface DayMenu {
-  lunch: { dal: string; sabzi: string };
-  dinner: { dal: string; sabzi: string };
-}
-
-const economicMenu: Record<string, DayMenu> = {
-  Mon: { lunch: { dal: "Dal Panchmel", sabzi: "Gobi Aloo" }, dinner: { dal: "Yellow Moong Dal Tadka", sabzi: "Aloo Jeera Beans" } },
-  Tue: { lunch: { dal: "Mix Dal", sabzi: "Jeera Aloo" }, dinner: { dal: "Dhaba-Style Chana Dal", sabzi: "Tori (Ghiya) Masala" } },
-  Wed: { lunch: { dal: "Arhar Dal", sabzi: "Bhindi Masala" }, dinner: { dal: "Panchmel Dal", sabzi: "Chatpata Aloo Baingan" } },
-  Thu: { lunch: { dal: "Masala Lauki Gravy Wali", sabzi: "Masala Aloo" }, dinner: { dal: "Masoor Dal Bhaba Style", sabzi: "Sukha Patta Gobhi" } },
-  Fri: { lunch: { dal: "Malka ki Dal", sabzi: "Capsicum Aloo" }, dinner: { dal: "Arhar Dal Fry", sabzi: "Bhindi Do Pyaza" } },
-  Sat: { lunch: { dal: "Chole", sabzi: "Poori (Special)" }, dinner: { dal: "Aloo Tamatar", sabzi: "Jeera Aloo" } },
-  Sun: { lunch: { dal: "Kadhi Pakora", sabzi: "Special Pakora" }, dinner: { dal: "Aloo Tamatar", sabzi: "Kaddu & Poori" } },
-};
-
-const premiumMenu: Record<string, DayMenu> = {
-  Mon: { lunch: { dal: "Pind-Style Amritsari Chole", sabzi: "Yellow Moong Dal Tadka" }, dinner: { dal: "Masala Lauki Gravy Wali", sabzi: "Masala Aloo" } },
-  Tue: { lunch: { dal: "Shahi Paneer Masala", sabzi: "Dal Makhani" }, dinner: { dal: "Malka ki Dal", sabzi: "Capsicum Aloo" } },
-  Wed: { lunch: { dal: "Punjabi Rajma Masala", sabzi: "Dhaba-Style Chana Dal" }, dinner: { dal: "Kadhai Mushroom", sabzi: "Moong-Masoor Dal" } },
-  Thu: { lunch: { dal: "Malka Ki Dal", sabzi: "Shahi Paneer" }, dinner: { dal: "Panchmel Dal", sabzi: "Chatpata Aloo Baingan" } },
-  Fri: { lunch: { dal: "Mattar Paneer Gravy", sabzi: "Panchmel Dal" }, dinner: { dal: "Moong-Masoor Dal", sabzi: "Bhindi Do Pyaza" } },
-  Sat: { lunch: { dal: "Mattar Paneer Gravy", sabzi: "Soya Chunks Aloo" }, dinner: { dal: "Rajma Masala", sabzi: "Jeera Aloo" } },
-  Sun: { lunch: { dal: "Kadai Paneer", sabzi: "Dal Makhani" }, dinner: { dal: "Arhar Dal Fry", sabzi: "Bhindi Do Pyaza" } },
-};
-
-const economicIncludes = ["4 Tawa Roti", "Steamed Rice", "Fresh Salad", "Pickle"];
-const premiumIncludes = [
-  "4 Tawa Roti or 2 Lachha Paratha",
-  "Veg Pulao / Peas Pulao",
-  "Raita of the day",
-  "1 Sweet (Phirni / Suji Halwa / Kheer)",
-  "Fresh Salad & Pickle",
-];
+import {
+  dayNames,
+  days,
+  getIncludesForPlan,
+  getMenuForPlan,
+  type DayKey,
+  type MealType,
+  type PlanType,
+} from "@/lib/daily-menu";
 
 export default function MenuSection() {
-  const [activeDay, setActiveDay] = useState("Mon");
+  const [activeDay, setActiveDay] = useState<DayKey>("Mon");
   const [activeMeal, setActiveMeal] = useState<MealType>("lunch");
   const [activePlan, setActivePlan] = useState<PlanType>("economic");
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
 
-  const menuData = activePlan === "economic" ? economicMenu : premiumMenu;
-  const includes = activePlan === "economic" ? economicIncludes : premiumIncludes;
+  const menuData = getMenuForPlan(activePlan);
+  const includes = getIncludesForPlan(activePlan);
   const meal = menuData[activeDay][activeMeal];
 
   return (
@@ -170,7 +140,7 @@ export default function MenuSection() {
               <div>
                 <div className="font-semibold text-white text-lg">
                   {activeMeal === "lunch" ? "Lunch" : "Dinner"} —{" "}
-                  {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"][days.indexOf(activeDay)]}
+                  {dayNames[activeDay]}
                 </div>
                 <div className="text-xs text-white/40 mt-0.5">
                   {activePlan === "premium" ? "👑 Premium Plan" : "🍱 Economic Plan"} · Freshly prepared · Delivered hot

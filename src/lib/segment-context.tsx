@@ -77,23 +77,19 @@ const defaultSegmentContext: SegmentContextType = {
 
 const SegmentContext = createContext<SegmentContextType>(defaultSegmentContext);
 
+function isSegment(value: string | null): value is Segment {
+  return (
+    value === "gharSe" ||
+    value === "zomato" ||
+    value === "swiggy" ||
+    value === "catering"
+  );
+}
+
 export function SegmentProvider({ children }: { children: React.ReactNode }) {
-  const [activeSegment, setActiveSegmentState] = useState<Segment>(() => {
-    if (typeof window === "undefined") return "gharSe";
-
-    const storedSegment = window.localStorage.getItem("aaryas-active-segment");
-    if (
-      storedSegment === "gharSe" ||
-      storedSegment === "zomato" ||
-      storedSegment === "swiggy" ||
-      storedSegment === "catering"
-    ) {
-      return storedSegment;
-    }
-
-    return "gharSe";
-  });
+  const [activeSegment, setActiveSegmentState] = useState<Segment>("gharSe");
   const [isTransitioning, setIsTransitioning] = useState(false);
+  const [hasLoadedSegment, setHasLoadedSegment] = useState(false);
 
   const setActiveSegment = (segment: Segment) => {
     if (segment === activeSegment) return;
@@ -107,10 +103,18 @@ export function SegmentProvider({ children }: { children: React.ReactNode }) {
   const config = SEGMENTS.find((s) => s.id === activeSegment)!;
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    const storedSegment = window.localStorage.getItem("aaryas-active-segment");
+    if (isSegment(storedSegment)) {
+      setActiveSegmentState(storedSegment);
+    }
+    setHasLoadedSegment(true);
+  }, []);
+
+  useEffect(() => {
+    if (hasLoadedSegment) {
       window.localStorage.setItem("aaryas-active-segment", activeSegment);
     }
-  }, [activeSegment]);
+  }, [activeSegment, hasLoadedSegment]);
 
   useEffect(() => {
     const dataAttrMap: Record<Segment, string> = {

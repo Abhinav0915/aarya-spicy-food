@@ -13,9 +13,22 @@ import {
   ShieldCheck,
   Eye,
   EyeOff,
+  ShoppingBag,
+  Clock3,
+  RefreshCcw,
+  CheckCircle2,
+  PlusCircle,
+  XCircle,
 } from "lucide-react";
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
+import {
+  API_PATHS,
+  ORDER_CANCEL_WINDOW_SECONDS,
+  ORDER_REFRESH_INTERVAL_MS,
+  apiUrl,
+  authHeaders,
+} from "@/lib/api";
 import { SegmentProvider } from "@/lib/segment-context";
 
 interface ProfileUser {
@@ -26,8 +39,75 @@ interface ProfileUser {
   token: string;
 }
 
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_DJANGO_API_URL || "http://127.0.0.1:8000";
+type OrderStatus =
+  | "pending"
+  | "confirmed"
+  | "preparing"
+  | "out_for_delivery"
+  | "completed"
+  | "cancelled";
+
+interface OrderItem {
+  id: number;
+  name: string;
+  category: string;
+  unit_price: number;
+  quantity: number;
+  line_total: number;
+}
+
+interface CustomerOrder {
+  id: number;
+  status: OrderStatus;
+  total: number;
+  customer_note: string;
+  created_at: string;
+  updated_at: string;
+  can_cancel?: boolean;
+  cancel_seconds_remaining?: number;
+  can_add_items?: boolean;
+  items: OrderItem[];
+}
+
+const statusLabels: Record<OrderStatus, string> = {
+  pending: "Received",
+  confirmed: "Confirmed",
+  preparing: "Preparing",
+  out_for_delivery: "Out for delivery",
+  completed: "Completed",
+  cancelled: "Cancelled",
+};
+
+const statusSteps: { value: OrderStatus; label: string }[] = [
+  { value: "pending", label: "Received" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "preparing", label: "Preparing" },
+  { value: "out_for_delivery", label: "On the way" },
+  { value: "completed", label: "Completed" },
+];
+
+function formatPrice(value: number) {
+  return `₹${value.toLocaleString("en-IN")}`;
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("en-IN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function getStatusProgress(status: OrderStatus) {
+  if (status === "cancelled") return 0;
+  const index = statusSteps.findIndex((step) => step.value === status);
+  return index >= 0 ? index : 0;
+}
+
+function getCancelSecondsRemaining(order: CustomerOrder, now: number) {
+  const cancelUntil =
+    new Date(order.created_at).getTime() + ORDER_CANCEL_WINDOW_SECONDS * 1000;
+  return Math.max(0, Math.ceil((cancelUntil - now) / 1000));
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -45,6 +125,11 @@ export default function ProfilePage() {
   const [statusType, setStatusType] = useState<"success" | "error">("success");
   const [isSaving, setIsSaving] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [orders, setOrders] = useState<CustomerOrder[]>([]);
+  const [ordersLoading, setOrdersLoading] = useState(false);
+  const [ordersError, setOrdersError] = useState("");
+  const [actionOrderId, setActionOrderId] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -69,6 +154,7 @@ export default function ProfilePage() {
 
     window.localStorage.removeItem("aaryaAuthUser");
     window.localStorage.removeItem("aaryaAuthToken");
+    window.dispatchEvent(new Event("aaryaAuthChanged"));
     router.push("/");
   };
 
@@ -85,10 +171,84 @@ export default function ProfilePage() {
         ? window.localStorage.getItem("aaryaAuthToken")
         : "";
 
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    return authHeaders(token);
+  };
+
+  const fetchOrderHistory = async (silent = false) => {
+    if (!silent) {
+      setOrdersLoading(true);
+    }
+    setOrdersError("");
+
+    try {
+      const response = await fetch(apiUrl(API_PATHS.customerOrders), {
+        headers: getAuthHeaders(),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || data?.message || "Unable to load your orders.",
+        );
+      }
+
+      setOrders(data.orders || []);
+    } catch (error) {
+      setOrdersError(
+        error instanceof Error ? error.message : "Unable to load your orders.",
+      );
+    } finally {
+      if (!silent) {
+        setOrdersLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!user) return;
+
+    fetchOrderHistory();
+    const interval = window.setInterval(
+      () => fetchOrderHistory(true),
+      ORDER_REFRESH_INTERVAL_MS,
+    );
+    return () => window.clearInterval(interval);
+  }, [user]);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(interval);
+  }, []);
+
+  const handleCancelOrder = async (orderId: number) => {
+    setActionOrderId(orderId);
+    setOrdersError("");
+
+    try {
+      const response = await fetch(apiUrl(API_PATHS.customerOrder(orderId)), {
+        method: "PATCH",
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ action: "cancel" }),
+      });
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || data?.message || "Unable to cancel this order.",
+        );
+      }
+
+      setOrders((current) =>
+        current.map((order) => (order.id === orderId ? data.order : order)),
+      );
+      window.dispatchEvent(new Event("aaryaOrdersUpdated"));
+    } catch (error) {
+      setOrdersError(
+        error instanceof Error ? error.message : "Unable to cancel this order.",
+      );
+    } finally {
+      setActionOrderId(null);
+    }
   };
 
   const handleProfileUpdate = async (
@@ -99,7 +259,7 @@ export default function ProfilePage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/profile/`, {
+      const response = await fetch(apiUrl(API_PATHS.profile), {
         method: "PUT",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -152,7 +312,7 @@ export default function ProfilePage() {
     }
 
     try {
-      const response = await fetch(`${API_BASE_URL}/change-password/`, {
+      const response = await fetch(apiUrl(API_PATHS.changePassword), {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -200,7 +360,7 @@ export default function ProfilePage() {
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/delete-user/`, {
+      const response = await fetch(apiUrl(API_PATHS.deleteUser), {
         method: "DELETE",
         headers: getAuthHeaders(),
       });
@@ -215,6 +375,7 @@ export default function ProfilePage() {
 
       window.localStorage.removeItem("aaryaAuthUser");
       window.localStorage.removeItem("aaryaAuthToken");
+      window.dispatchEvent(new Event("aaryaAuthChanged"));
       router.push("/");
     } catch (error) {
       setStatusType("error");
@@ -236,7 +397,7 @@ export default function ProfilePage() {
         <Navbar />
 
         <main className="px-4 pb-20 pt-28 sm:px-6">
-          <div className="mx-auto flex max-w-4xl items-center justify-center">
+          <div className="mx-auto flex max-w-6xl items-center justify-center">
             <motion.section
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
@@ -303,6 +464,242 @@ export default function ProfilePage() {
                   {statusMessage}
                 </div>
               )}
+
+              <section className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="inline-flex items-center gap-2 rounded-full border border-[var(--primary)]/25 bg-[rgba(249,115,22,0.08)] px-3 py-1 text-sm font-medium text-[var(--primary)]">
+                      <ShoppingBag size={14} />
+                      Order history
+                    </div>
+                    <h2 className="mt-3 text-2xl font-semibold text-white">
+                      Your Ghar Se orders
+                    </h2>
+                    <p className="mt-2 text-sm text-white/55">
+                      Track current orders and revisit what you ordered before.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => fetchOrderHistory()}
+                    disabled={ordersLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-semibold text-white/80 transition hover:bg-white/10 disabled:opacity-60"
+                  >
+                    <RefreshCcw size={16} />
+                    {ordersLoading ? "Refreshing..." : "Refresh"}
+                  </button>
+                </div>
+
+                {ordersError && (
+                  <p className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                    {ordersError}
+                  </p>
+                )}
+
+                <div className="mt-5 space-y-4">
+                  {ordersLoading && orders.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/10 p-6 text-center text-sm text-white/55">
+                      Loading your orders...
+                    </div>
+                  ) : orders.length === 0 ? (
+                    <div className="rounded-2xl border border-white/10 bg-black/10 p-6 text-center">
+                      <Clock3 className="mx-auto text-white/35" size={24} />
+                      <p className="mt-3 text-sm text-white/55">
+                        No orders yet. Your first order will appear here.
+                      </p>
+                      <Link
+                        href="/place-order"
+                        className="mt-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                        style={{
+                          background:
+                            "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                        }}
+                      >
+                        Place an order
+                      </Link>
+                    </div>
+                  ) : (
+                    orders.map((order) => {
+                      const cancelSecondsRemaining = getCancelSecondsRemaining(
+                        order,
+                        now,
+                      );
+                      const canCancel =
+                        order.status !== "cancelled" &&
+                        order.status !== "completed" &&
+                        (order.can_cancel ?? true) &&
+                        cancelSecondsRemaining > 0;
+                      const canAddItems =
+                        order.can_add_items ??
+                        ["pending", "confirmed"].includes(order.status);
+
+                      return (
+                      <article
+                        key={order.id}
+                        className="rounded-[28px] border border-white/10 bg-[rgba(0,0,0,0.14)] p-5"
+                      >
+                        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                          <div>
+                            <div className="flex flex-wrap items-center gap-3">
+                              <h3 className="text-xl font-semibold text-white">
+                                Order #{order.id}
+                              </h3>
+                              <span className="rounded-full border border-[var(--primary)]/25 bg-[rgba(249,115,22,0.08)] px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-[var(--primary)]">
+                                {statusLabels[order.status]}
+                              </span>
+                            </div>
+                            <p className="mt-2 text-sm text-white/45">
+                              Placed {formatDate(order.created_at)}
+                            </p>
+                          </div>
+                          <div className="text-left lg:text-right">
+                            <p className="text-sm uppercase tracking-[0.22em] text-white/40">
+                              Total
+                            </p>
+                            <p className="mt-1 text-2xl font-semibold text-white">
+                              {formatPrice(order.total)}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+                          <div
+                            className={`rounded-2xl border px-4 py-3 text-sm ${
+                              canCancel
+                                ? "border-emerald-400/25 bg-emerald-500/10 text-emerald-100"
+                                : "border-white/10 bg-white/5 text-white/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 font-semibold">
+                              <Clock3 size={15} />
+                              {canCancel
+                                ? `Cancel window: ${cancelSecondsRemaining}s left`
+                                : "Cancel window closed"}
+                            </div>
+                            <p className="mt-1 text-xs opacity-75">
+                              Orders can be cancelled only within 60 seconds of placing them.
+                            </p>
+                          </div>
+
+                          <div
+                            className={`rounded-2xl border px-4 py-3 text-sm ${
+                              canAddItems
+                                ? "border-[var(--primary)]/25 bg-[rgba(249,115,22,0.08)] text-white"
+                                : "border-white/10 bg-white/5 text-white/50"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 font-semibold">
+                              <PlusCircle size={15} />
+                              {canAddItems
+                                ? "You can add items now"
+                                : "Adding items is closed"}
+                            </div>
+                            <p className="mt-1 text-xs opacity-75">
+                              You can add more items until the kitchen moves this order to Preparing.
+                            </p>
+                          </div>
+                        </div>
+
+                        {(canCancel || canAddItems) && (
+                          <div className="mt-4 flex flex-wrap gap-3">
+                            {canCancel && (
+                              <button
+                                type="button"
+                                onClick={() => handleCancelOrder(order.id)}
+                                disabled={actionOrderId === order.id}
+                                className="inline-flex items-center gap-2 rounded-full border border-red-400/25 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                              >
+                                <XCircle size={16} />
+                                {actionOrderId === order.id
+                                  ? "Cancelling..."
+                                  : "Cancel order"}
+                              </button>
+                            )}
+
+                            {canAddItems && (
+                              <Link
+                                href={`/place-order?addToOrder=${order.id}`}
+                                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold text-white transition hover:scale-[1.01]"
+                                style={{
+                                  background:
+                                    "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                                }}
+                              >
+                                <PlusCircle size={16} />
+                                Add items
+                              </Link>
+                            )}
+                          </div>
+                        )}
+
+                        <div className="mt-5 grid gap-2 md:grid-cols-5">
+                          {statusSteps.map((step, index) => {
+                            const active =
+                              order.status !== "cancelled" &&
+                              index <= getStatusProgress(order.status);
+
+                            return (
+                              <div
+                                key={step.value}
+                                className={`rounded-2xl border px-3 py-3 text-sm transition ${
+                                  active
+                                    ? "border-[var(--primary)]/30 bg-[rgba(249,115,22,0.12)] text-white"
+                                    : "border-white/10 bg-white/5 text-white/40"
+                                }`}
+                              >
+                                <div className="flex items-center gap-2">
+                                  <CheckCircle2 size={15} />
+                                  <span>{step.label}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {order.status === "cancelled" && (
+                          <p className="mt-4 rounded-2xl border border-red-400/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                            This order was cancelled.
+                          </p>
+                        )}
+
+                        <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
+                          {order.items.map((item) => (
+                            <div
+                              key={item.id}
+                              className="grid gap-2 border-b border-white/10 bg-white/[0.03] px-4 py-3 text-sm last:border-b-0 sm:grid-cols-[1fr_auto_auto]"
+                            >
+                              <div>
+                                <p className="font-semibold text-white">
+                                  {item.name}
+                                </p>
+                                <p className="mt-1 text-xs text-white/45">
+                                  {item.category}
+                                </p>
+                              </div>
+                              <div className="text-white/65">
+                                {item.quantity} x {formatPrice(item.unit_price)}
+                              </div>
+                              <div className="font-semibold text-white">
+                                {formatPrice(item.line_total)}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {order.customer_note && (
+                          <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-white/65">
+                            <span className="font-semibold text-white">
+                              Note:
+                            </span>{" "}
+                            {order.customer_note}
+                          </p>
+                        )}
+                      </article>
+                      );
+                    })
+                  )}
+                </div>
+              </section>
 
               <div className="mt-8 grid gap-6 lg:grid-cols-2">
                 <form
