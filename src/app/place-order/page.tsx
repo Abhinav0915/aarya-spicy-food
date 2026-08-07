@@ -19,9 +19,25 @@ import {
 import Navbar from "@/components/layout/Navbar";
 import Footer from "@/components/layout/Footer";
 import WhatsAppFAB from "@/components/ui/WhatsAppFAB";
+import { API_PATHS, apiUrl, authHeaders } from "@/lib/api";
+import {
+  days,
+  getIncludesForPlan,
+  getMenuForPlan,
+  mealLabels,
+  planLabels,
+  planPrices,
+  type DayKey,
+  type MealDishes,
+  type MealType,
+  type PlanType,
+} from "@/lib/daily-menu";
 import { SegmentProvider, useSegment } from "@/lib/segment-context";
 
 type Category = "All" | "Lunch" | "Dinner" | "Add-ons";
+type PlanFilter = "all" | PlanType;
+
+const dayForDateIndex: DayKey[] = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 interface MenuItem {
   id: number;
@@ -30,69 +46,69 @@ interface MenuItem {
   price: number;
   category: Exclude<Category, "All">;
   tag?: string;
+  day?: DayKey;
+  meal?: MealType;
+  plan?: PlanType;
+  dishes?: MealDishes;
+  includes?: string[];
 }
 
 interface BasketItem extends MenuItem {
   quantity: number;
 }
 
-const menuItems: MenuItem[] = [
+const addOnItems: MenuItem[] = [
   {
-    id: 1,
-    name: "Economic Lunch",
-    description:
-      "Dal, sabzi, roti, rice and salad for a wholesome midday meal.",
-    price: 129,
-    category: "Lunch",
-    tag: "Most Loved",
-  },
-  {
-    id: 2,
-    name: "Premium Lunch",
-    description:
-      "A richer lunch plate with paneer, special curry and a sweet finish.",
-    price: 179,
-    category: "Lunch",
-    tag: "Chef Pick",
-  },
-  {
-    id: 3,
-    name: "Economic Dinner",
-    description: "Comforting dinner with a fresh sabzi, dal and warm rotis.",
-    price: 129,
-    category: "Dinner",
-  },
-  {
-    id: 4,
-    name: "Premium Dinner",
-    description:
-      "Restaurant-style dinner featuring a premium curry and classic sides.",
-    price: 179,
-    category: "Dinner",
-    tag: "Popular",
-  },
-  {
-    id: 5,
+    id: 901,
     name: "Extra Roti Pack",
     description: "Soft tawa rotis, perfect for extra servings.",
     price: 18,
     category: "Add-ons",
   },
   {
-    id: 6,
+    id: 902,
     name: "Extra Sabzi",
     description: "Add an extra helping of your favorite sabzi.",
     price: 39,
     category: "Add-ons",
   },
   {
-    id: 7,
+    id: 903,
     name: "Sweet Dish",
     description: "A small dessert to finish your meal on a sweet note.",
     price: 25,
     category: "Add-ons",
   },
 ];
+
+const dailyMenuItems: MenuItem[] = days.flatMap((day, dayIndex) =>
+  (["economic", "premium"] as PlanType[]).flatMap((plan, planIndex) => {
+    const menu = getMenuForPlan(plan);
+    const includes = getIncludesForPlan(plan);
+
+    return (["lunch", "dinner"] as MealType[]).map((meal, mealIndex) => {
+      const dishes = menu[day][meal];
+      const planLabel = planLabels[plan];
+      const mealLabel = mealLabels[meal];
+
+      return {
+        id: dayIndex * 10 + planIndex * 2 + mealIndex + 1,
+        name: `${planLabel} ${mealLabel}`,
+        description: `${dishes.dal} with ${dishes.sabzi}. Includes ${includes.join(", ")}.`,
+        price: planPrices[plan],
+        category: mealLabel as "Lunch" | "Dinner",
+        tag: plan === "premium" ? "Premium" : "Economic",
+        day,
+        meal,
+        plan,
+        dishes,
+        includes,
+      };
+    });
+  }),
+);
+
+const menuItems: MenuItem[] = [...dailyMenuItems, ...addOnItems];
 
 function formatPrice(value: number) {
   return `₹${value.toLocaleString("en-IN")}`;
@@ -104,15 +120,16 @@ interface AuthUser {
   email: string;
   username: string;
   token: string;
+  isStaff?: boolean;
+  isSuperuser?: boolean;
 }
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_DJANGO_API_URL || "http://127.0.0.1:8000";
 
 function PlaceOrderPageContent() {
   const router = useRouter();
   const { activeSegment } = useSegment();
   const [activeCategory, setActiveCategory] = useState<Category>("All");
+  const [orderDay, setOrderDay] = useState<DayKey>("Mon");
+  const [activePlanFilter, setActivePlanFilter] = useState<PlanFilter>("all");
   const [basket, setBasket] = useState<BasketItem[]>([]);
   const [authMode, setAuthMode] = useState<"signin" | "signup">("signin");
   const [firstName, setFirstName] = useState("");
@@ -128,12 +145,37 @@ function PlaceOrderPageContent() {
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [authError, setAuthError] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(
+    null,
+  );
+  const [customerNote, setCustomerNote] = useState("");
+  const [orderLoading, setOrderLoading] = useState(false);
+  const [orderMessage, setOrderMessage] = useState("");
+  const [orderStatus, setOrderStatus] = useState<"success" | "error">(
+    "success",
+  );
+  const [addToOrderId, setAddToOrderId] = useState<number | null>(null);
 
   useEffect(() => {
     if (activeSegment !== "gharSe") {
       router.replace("/");
     }
   }, [activeSegment, router]);
+
+  useEffect(() => {
+    setOrderDay(dayForDateIndex[new Date().getDay()]);
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const orderId = Number(
+      new URLSearchParams(window.location.search).get("addToOrder"),
+    );
+    if (Number.isInteger(orderId) && orderId > 0) {
+      setAddToOrderId(orderId);
+    }
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -158,6 +200,7 @@ function PlaceOrderPageContent() {
 
     window.localStorage.setItem("aaryaAuthUser", JSON.stringify(user));
     window.localStorage.setItem("aaryaAuthToken", user.token);
+    window.dispatchEvent(new Event("aaryaAuthChanged"));
     setAuthUser(user);
   };
 
@@ -166,6 +209,7 @@ function PlaceOrderPageContent() {
 
     window.localStorage.removeItem("aaryaAuthUser");
     window.localStorage.removeItem("aaryaAuthToken");
+    window.dispatchEvent(new Event("aaryaAuthChanged"));
     setAuthUser(null);
     setEmail("");
     setPassword("");
@@ -185,10 +229,7 @@ function PlaceOrderPageContent() {
         ? window.localStorage.getItem("aaryaAuthToken")
         : "";
 
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    };
+    return authHeaders(token);
   };
 
   const handleLogin = async (event: FormEvent<HTMLFormElement>) => {
@@ -197,7 +238,7 @@ function PlaceOrderPageContent() {
     setAuthLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/login/`, {
+      const response = await fetch(apiUrl(API_PATHS.login), {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -210,7 +251,9 @@ function PlaceOrderPageContent() {
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(data?.error || data?.detail || data?.message || "Unable to sign in.");
+        throw new Error(
+          data?.error || data?.detail || data?.message || "Unable to sign in.",
+        );
       }
 
       const token = data.access || data.token || data.access_token || "";
@@ -222,6 +265,8 @@ function PlaceOrderPageContent() {
         email: userData.email || email.trim(),
         username: userData.username || loginIdentifier.trim(),
         token,
+        isStaff: Boolean(userData.is_staff || userData.isStaff),
+        isSuperuser: Boolean(userData.is_superuser || userData.isSuperuser),
       };
 
       if (!user.token) {
@@ -238,9 +283,38 @@ function PlaceOrderPageContent() {
     }
   };
 
+  const validateUsername = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      setUsernameAvailable(null);
+      return;
+    }
+
+    if (trimmed.length < 3) {
+      setUsernameAvailable(false);
+      setAuthError("Username must be at least 3 characters long.");
+      return;
+    }
+
+    setUsernameAvailable(true);
+    setAuthError("");
+  };
+
   const handleSignup = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setAuthError("");
+
+    const normalizedUsername = username.trim();
+
+    if (!normalizedUsername) {
+      setAuthError("Username is required.");
+      return;
+    }
+
+    if (normalizedUsername.length < 3) {
+      setAuthError("Username must be at least 3 characters long.");
+      return;
+    }
 
     if (password !== confirmPassword) {
       setAuthError("Passwords do not match.");
@@ -250,11 +324,11 @@ function PlaceOrderPageContent() {
     setAuthLoading(true);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/signup/`, {
+      const response = await fetch(apiUrl(API_PATHS.signup), {
         method: "POST",
         headers: getAuthHeaders(),
         body: JSON.stringify({
-          username: username.trim() || email.split("@")[0],
+          username: normalizedUsername,
           first_name: firstName.trim(),
           last_name: lastName.trim(),
           email: email.trim(),
@@ -267,7 +341,8 @@ function PlaceOrderPageContent() {
 
       if (!response.ok) {
         throw new Error(
-          data?.detail ||
+          data?.error ||
+            data?.detail ||
             data?.message ||
             data?.errors?.[0] ||
             "Unable to create your account.",
@@ -283,6 +358,8 @@ function PlaceOrderPageContent() {
         email: userData.email || email.trim(),
         username: userData.username || username.trim() || email.split("@")[0],
         token,
+        isStaff: Boolean(userData.is_staff || userData.isStaff),
+        isSuperuser: Boolean(userData.is_superuser || userData.isSuperuser),
       };
 
       if (!user.token) {
@@ -302,9 +379,26 @@ function PlaceOrderPageContent() {
   };
 
   const filteredItems = useMemo(() => {
-    if (activeCategory === "All") return menuItems;
-    return menuItems.filter((item) => item.category === activeCategory);
-  }, [activeCategory]);
+    return menuItems.filter((item) => {
+      if (activeCategory !== "All" && item.category !== activeCategory) {
+        return false;
+      }
+
+      if (item.day && item.day !== orderDay) {
+        return false;
+      }
+
+      if (
+        activePlanFilter !== "all" &&
+        item.plan &&
+        item.plan !== activePlanFilter
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [activeCategory, activePlanFilter, orderDay]);
 
   const subtotal = basket.reduce(
     (sum, item) => sum + item.price * item.quantity,
@@ -336,6 +430,67 @@ function PlaceOrderPageContent() {
         )
         .filter((item) => item.quantity > 0),
     );
+  };
+
+  const submitOrder = async () => {
+    if (!basket.length) {
+      setOrderStatus("error");
+      setOrderMessage("Please add at least one item before placing an order.");
+      return;
+    }
+
+    setOrderLoading(true);
+    setOrderMessage("");
+
+    try {
+      const response = await fetch(
+        apiUrl(
+          addToOrderId
+            ? API_PATHS.customerOrder(addToOrderId)
+            : API_PATHS.customerOrders,
+        ),
+        {
+          method: addToOrderId ? "PATCH" : "POST",
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            ...(addToOrderId ? { action: "add_items" } : {}),
+            customer_note: customerNote.trim(),
+            items: basket.map((item) => ({
+              menu_item_id: item.id,
+              name: item.name,
+              category: item.category,
+              unit_price: item.price,
+              quantity: item.quantity,
+            })),
+          }),
+        },
+      );
+
+      const data = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error || data?.message || "Unable to place your order.",
+        );
+      }
+
+      setBasket([]);
+      setCustomerNote("");
+      setOrderStatus("success");
+      window.dispatchEvent(new Event("aaryaOrdersUpdated"));
+      setOrderMessage(
+        addToOrderId
+          ? `Items added to order #${data.order?.id || addToOrderId}. You can add more until Preparing starts.`
+          : `Order #${data.order?.id || ""} received. Our kitchen team can see it now.`,
+      );
+    } catch (error) {
+      setOrderStatus("error");
+      setOrderMessage(
+        error instanceof Error ? error.message : "Unable to place your order.",
+      );
+    } finally {
+      setOrderLoading(false);
+    }
   };
 
   const whatsappLink = `https://wa.me/919286702253?text=${encodeURIComponent(
@@ -435,7 +590,9 @@ function PlaceOrderPageContent() {
                       <input
                         type="text"
                         value={loginIdentifier}
-                        onChange={(event) => setLoginIdentifier(event.target.value)}
+                        onChange={(event) =>
+                          setLoginIdentifier(event.target.value)
+                        }
                         placeholder="Enter your username or email"
                         required
                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
@@ -459,9 +616,15 @@ function PlaceOrderPageContent() {
                         type="button"
                         onClick={() => setShowSigninPassword((value) => !value)}
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showSigninPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showSigninPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showSigninPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showSigninPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -494,7 +657,10 @@ function PlaceOrderPageContent() {
                       <input
                         type="text"
                         value={username}
-                        onChange={(event) => setUsername(event.target.value)}
+                        onChange={(event) => {
+                          setUsername(event.target.value);
+                          validateUsername(event.target.value);
+                        }}
                         placeholder="Choose a username"
                         required
                         className="w-full bg-transparent text-sm text-white outline-none placeholder:text-white/35"
@@ -565,9 +731,15 @@ function PlaceOrderPageContent() {
                         type="button"
                         onClick={() => setShowSignupPassword((value) => !value)}
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showSignupPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showSignupPassword ? "Hide password" : "Show password"
+                        }
                       >
-                        {showSignupPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showSignupPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -588,11 +760,21 @@ function PlaceOrderPageContent() {
                       />
                       <button
                         type="button"
-                        onClick={() => setShowConfirmPassword((value) => !value)}
+                        onClick={() =>
+                          setShowConfirmPassword((value) => !value)
+                        }
                         className="text-white/60 transition hover:text-white"
-                        aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                        aria-label={
+                          showConfirmPassword
+                            ? "Hide password"
+                            : "Show password"
+                        }
                       >
-                        {showConfirmPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                        {showConfirmPassword ? (
+                          <EyeOff size={16} />
+                        ) : (
+                          <Eye size={16} />
+                        )}
                       </button>
                     </div>
                   </label>
@@ -649,12 +831,13 @@ function PlaceOrderPageContent() {
                   className="mt-4 font-display text-4xl md:text-5xl font-bold text-white"
                   style={{ fontFamily: "var(--font-display)" }}
                 >
-                  Place your order in{" "}
-                  <span className="gradient-text">just a few taps</span>
+                  Fresh Menu,{" "}
+                  <span className="gradient-text">Every Day</span>
                 </h1>
                 <p className="mt-4 text-base text-white/60 md:text-lg">
-                  Browse our menu, pick your favorites, and build a basket for
-                  lunch, dinner, or extra sides.
+                  {addToOrderId
+                    ? `Add more items to order #${addToOrderId}. You can keep adding items until the kitchen moves it to Preparing.`
+                    : "Compare lunch and dinner across Economic and Premium plans, then add the exact meal you want to your basket."}
                 </p>
               </div>
 
@@ -679,6 +862,35 @@ function PlaceOrderPageContent() {
 
           <div className="mt-8 grid gap-8 xl:grid-cols-[1.7fr_0.9fr]">
             <section className="space-y-6">
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "all", label: "All Plans" },
+                  { value: "economic", label: "Economic" },
+                  { value: "premium", label: "Premium" },
+                ].map((plan) => (
+                  <button
+                    key={plan.value}
+                    type="button"
+                    onClick={() => setActivePlanFilter(plan.value as PlanFilter)}
+                    className={`rounded-full px-4 py-2 text-sm font-semibold transition ${
+                      activePlanFilter === plan.value
+                        ? "text-white"
+                        : "text-white/50 hover:text-white/80"
+                    }`}
+                    style={
+                      activePlanFilter === plan.value
+                        ? {
+                            background:
+                              "linear-gradient(135deg, var(--primary), var(--primary-dark))",
+                          }
+                        : { background: "rgba(255,255,255,0.05)" }
+                    }
+                  >
+                    {plan.label}
+                  </button>
+                ))}
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 {(["All", "Lunch", "Dinner", "Add-ons"] as Category[]).map(
                   (category) => (
@@ -705,6 +917,12 @@ function PlaceOrderPageContent() {
                 )}
               </div>
 
+              <div className="rounded-2xl border border-[var(--primary)]/15 bg-[rgba(249,115,22,0.08)] px-4 py-3 text-sm text-white/65">
+                {addToOrderId
+                  ? "Adding to an existing order is available only before the Preparing phase starts."
+                  : "Freshly prepared and delivered hot. Menu items are subject to seasonal availability."}
+              </div>
+
               <div className="grid gap-4 md:grid-cols-2">
                 {filteredItems.map((item) => (
                   <motion.article
@@ -714,7 +932,7 @@ function PlaceOrderPageContent() {
                     className="rounded-3xl border border-white/10 bg-[rgba(255,255,255,0.03)] p-5"
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <div>
+                      <div className="min-w-0">
                         <div className="flex items-center gap-2">
                           <h2 className="text-lg font-semibold text-white">
                             {item.name}
@@ -735,6 +953,45 @@ function PlaceOrderPageContent() {
                         </div>
                       </div>
                     </div>
+
+                    {item.dishes && (
+                      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                            Dal / Main Curry
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-white">
+                            {item.dishes.dal}
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                          <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                            Sabzi
+                          </div>
+                          <div className="mt-2 text-sm font-semibold text-white">
+                            {item.dishes.sabzi}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {item.includes && (
+                      <div className="mt-5">
+                        <div className="text-xs uppercase tracking-[0.2em] text-white/40">
+                          Always included
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {item.includes.map((include) => (
+                            <span
+                              key={include}
+                              className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/65"
+                            >
+                              {include}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
 
                     <button
                       onClick={() => addToBasket(item)}
@@ -829,17 +1086,54 @@ function PlaceOrderPageContent() {
                 </div>
               </div>
 
-              <a
-                href={whatsappLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="mt-6 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02]"
+              <label className="mt-5 block text-sm font-medium text-white/70">
+                <span className="mb-2 block">Kitchen note</span>
+                <textarea
+                  value={customerNote}
+                  onChange={(event) => setCustomerNote(event.target.value)}
+                  placeholder="Less spicy, delivery timing, or any request..."
+                  rows={3}
+                  className="w-full resize-none rounded-2xl border border-white/10 bg-[rgba(255,255,255,0.04)] px-4 py-3 text-sm text-white outline-none placeholder:text-white/35"
+                />
+              </label>
+
+              {orderMessage && (
+                <p
+                  className={`mt-4 rounded-2xl border px-4 py-3 text-sm ${
+                    orderStatus === "success"
+                      ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-100"
+                      : "border-red-400/30 bg-red-500/10 text-red-200"
+                  }`}
+                >
+                  {orderMessage}
+                </p>
+              )}
+
+              <button
+                type="button"
+                onClick={submitOrder}
+                disabled={orderLoading || basket.length === 0}
+                className="mt-6 flex w-full items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition hover:scale-[1.02] disabled:cursor-not-allowed disabled:opacity-60"
                 style={{
                   background:
                     "linear-gradient(135deg, var(--primary), var(--primary-dark))",
                 }}
               >
-                Order on WhatsApp
+                {orderLoading
+                  ? "Sending to kitchen..."
+                  : addToOrderId
+                    ? "Add items to order"
+                    : "Place order"}
+                <ArrowRight size={16} />
+              </button>
+
+              <a
+                href={whatsappLink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white/80 transition hover:bg-white/10"
+              >
+                Share on WhatsApp
                 <ArrowRight size={16} />
               </a>
             </aside>
