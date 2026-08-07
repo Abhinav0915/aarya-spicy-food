@@ -5,6 +5,10 @@ node_modules/
 
 # Next.js build outputs
 .next/
+.next-*/
+.next-build/
+.next-dev/
+firebase-out/
 out/
 
 # SWC cache (this is causing your large file issue)
