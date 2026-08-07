@@ -13,6 +13,7 @@ export const metadata: Metadata = {
     "cloud kitchen Bareilly",
     "Aaryas Spicy Kitchen",
   ],
+  
   openGraph: {
     title: "Aaryas Spicy Kitchen | Ghar Ka Khana, Delivered Fresh",
     description: "Authentic homemade food delivered daily in Bareilly.",
